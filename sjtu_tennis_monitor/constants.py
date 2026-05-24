@@ -31,7 +31,5 @@ DEBUG_PAGE_LIST_SECONDS = 60
 # ---------------------------------------------------------------------------
 PC_SHORTCUT_NAME = "交我办.lnk"
 ANDROID_PACKAGE = "edu.sjtu.infoplus.taskcenter"
-REFERENCE_WINDOW_SIZE = (795, 1337)
 DATE_CARD_RATIOS = (0.122, 0.351, 0.586, 0.815)
 DATE_CARD_Y_RATIO = 0.698
-DATE_CARD_STATUS_BOX = (0.08, 0.66, 0.16, 0.76)

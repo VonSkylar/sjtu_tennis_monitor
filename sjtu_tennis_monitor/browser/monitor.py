@@ -35,7 +35,6 @@ class VenueMonitor:
         self._last_config: MonitorConfig | None = None
         self._next_date_index_by_venue: dict[str, int] = {}
         self._pages_by_venue: dict[str, object] = {}
-        self._submitted_order_keys: set[tuple[str, str, str, str]] = set()
 
     def stop(self) -> None:
         self.stop_event.set()
@@ -201,10 +200,6 @@ class VenueMonitor:
             return
 
         slot = slots[0]
-        order_key = (slot.venue_key, slot.date.isoformat(), slot.hour, slot.court)
-        if order_key in self._submitted_order_keys:
-            self.events.put(("log", f"{slot.venue} {slot.date.isoformat()} {slot.hour} {slot.court} 已尝试提交过订单，本轮不重复下单。"))
-            return
 
         try:
             self._auto_order_slot(slot)
@@ -212,7 +207,6 @@ class VenueMonitor:
             self.events.put(("log", f"自动下单未完成：{exc}"))
             return
 
-        self._submitted_order_keys.add(order_key)
         self.events.put(("log", f"已自动提交订单：{slot.venue} {slot.date.isoformat()} {slot.hour} {slot.court}"))
 
     def _auto_order_slot(self, slot: Slot) -> None:

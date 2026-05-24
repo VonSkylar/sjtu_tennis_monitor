@@ -11,12 +11,8 @@ import time
 from pathlib import Path
 from typing import Iterable
 
-from PIL import Image
-
 from sjtu_tennis_monitor.constants import (
-    ANDROID_PACKAGE,
     DATE_CARD_RATIOS,
-    DATE_CARD_STATUS_BOX,
     DATE_CARD_Y_RATIO,
     PC_SHORTCUT_NAME,
 )
@@ -51,17 +47,14 @@ class PCBookingDriver:
                 raise PCAppNotReady("监控已停止。")
             adb = ADBController.discover(self.events, self.stop_event)
             if adb and adb.is_ready():
-                break
+                self.controller = adb
+                self.controller.prepare()
+                self.events.put(("log", "已连接 Androws Android 自动化接口，开始按页面文字节点进行后台操作。"))
+                return
             time.sleep(2.0)
 
-        if adb and adb.is_ready():
-            self.controller = adb
-            self.controller.prepare()
-            self.events.put(("log", "已连接 Androws Android 自动化接口，开始按页面文字节点进行后台操作。"))
-            return
-
         raise PCAppNotReady(
-            "Androws Android 自动化接口当前是 offline，请确认 Androws 虚拟机及开发者模式已正常开启。"
+            "PC版仅支持 ADB 控制。Androws Android 自动化接口当前是 offline，请确认 Androws 虚拟机及开发者模式已正常开启。"
         )
 
     def stop(self) -> None:
@@ -87,8 +80,11 @@ class PCBookingDriver:
 
     def _open_venue_detail_by_adb(self, venue: Venue) -> None:
         controller = self._adb()
-        for _ in range(6):
+        for _ in range(8):
             text = controller.screen_text()
+            if not text.strip():
+                time.sleep(0.8)
+                continue
             if self._looks_like_venue_detail_text(text, venue):
                 return
             if self._looks_like_other_venue_detail_text(text, venue):
@@ -99,11 +95,18 @@ class PCBookingDriver:
             if self._looks_like_booking_list_text(text):
                 self._tap_venue_in_list(venue)
                 return
-            if "场馆预约" in text and ("去跑步" in text or "体育赛事" in text):
+            if self._looks_like_home_text(text):
+                if controller.tap_text("智慧体育"):
+                    time.sleep(1.5)
+                    continue
+                controller.tap_ratio(0.38, 0.82)
+                time.sleep(1.5)
+                continue
+            if self._looks_like_sports_hub_text(text):
                 if controller.tap_text("场馆预约"):
                     time.sleep(1.5)
                     continue
-            if "智慧体育" in text:
+            if "智慧体育" in text and "场馆预约" not in text:
                 if controller.tap_text("智慧体育"):
                     time.sleep(1.5)
                     continue
@@ -132,14 +135,31 @@ class PCBookingDriver:
             and "场馆设施" not in text
         )
 
+    def _looks_like_home_text(self, text: str) -> bool:
+        return "智慧体育" in text and ("服务大厅" in text or "首页" in text or "扫一扫" in text)
+
+    def _looks_like_sports_hub_text(self, text: str) -> bool:
+        return "智慧体育" in text and "场馆预约" in text and ("去跑步" in text or "体育赛事" in text or "运动健康" in text)
+
     def _open_booking_list_from_known_path(self) -> None:
         controller = self._controller()
-        if not controller.tap_text("智慧体育"):
-            controller.tap_ratio(0.370, 0.310)
-        time.sleep(1.5)
-        if not controller.tap_text("场馆预约"):
-            controller.tap_ratio(0.220, 0.225)
-        time.sleep(1.5)
+        for _ in range(4):
+            text = controller.screen_text()
+            if self._looks_like_booking_list_text(text):
+                return
+            if self._looks_like_home_text(text):
+                if not controller.tap_text("智慧体育"):
+                    controller.tap_ratio(0.38, 0.82)
+                time.sleep(1.5)
+                continue
+            if self._looks_like_sports_hub_text(text):
+                if not controller.tap_text("场馆预约"):
+                    controller.tap_ratio(0.21, 0.19)
+                time.sleep(1.5)
+                continue
+            controller.back()
+            time.sleep(0.8)
+        raise PCAppNotReady("没有进入场馆预约列表。")
 
     def _tap_venue_in_list(self, venue: Venue) -> None:
         controller = self._controller()
@@ -253,120 +273,6 @@ class PCBookingDriver:
                 if abs(full_x - date_x) <= 95 and 0 <= full_y - date_y <= 90:
                     return True
         return False
-
-    def _extract_slots_from_screenshot(self, venue: Venue, target_date: dt.date, config: MonitorConfig) -> list[Slot]:
-        image = self._controller().screenshot()
-        if not self._looks_like_venue_detail_screenshot(image):
-            raise PCAppNotReady("截图未确认处于场馆详情页，已跳过空场判断以避免误报。")
-        if self._selected_date_card_is_full(image, target_date):
-            self.events.put(("log", f"PC版 {venue.name} {target_date.isoformat()} 日期卡片显示已订满。"))
-            return []
-
-        components = self._find_blue_available_components(image)
-        if components:
-            return [self._summary_slot(venue, target_date, config, f"识别到 {len(components)} 个蓝色可预约候选")]
-
-        return [self._summary_slot(venue, target_date, config, "日期卡片未显示已订满")]
-
-    def _looks_like_venue_detail_screenshot(self, image: Image.Image) -> bool:
-        rgb = image.convert("RGB")
-        width, height = rgb.size
-        pixels = rgb.load()
-
-        banner_top = int(height * 0.12)
-        banner_bottom = int(height * 0.43)
-        colorful = 0
-        sampled = 0
-        for y in range(banner_top, banner_bottom, 6):
-            for x in range(int(width * 0.05), int(width * 0.90), 6):
-                r, g, b = pixels[x, y]
-                if max(r, g, b) - min(r, g, b) > 35 and not (b > 170 and g > 90 and r < 80):
-                    colorful += 1
-                sampled += 1
-
-        card_y = int(height * DATE_CARD_Y_RATIO)
-        white_cards = 0
-        for ratio in DATE_CARD_RATIOS:
-            cx = int(width * ratio)
-            card_pixels = 0
-            white = 0
-            for y in range(card_y - 30, card_y + 35, 4):
-                for x in range(cx - 45, cx + 45, 4):
-                    if 0 <= x < width and 0 <= y < height:
-                        r, g, b = pixels[x, y]
-                        if r > 235 and g > 235 and b > 235:
-                            white += 1
-                        card_pixels += 1
-            if card_pixels and white / card_pixels > 0.42:
-                white_cards += 1
-
-        return sampled > 0 and colorful / sampled > 0.08 and white_cards >= 3
-
-    def _selected_date_card_is_full(self, image: Image.Image, target_date: dt.date) -> bool:
-        days_from_today = max(0, min(13, (target_date - dt.date.today()).days))
-        index = days_from_today % 4
-        box = self._date_status_box(image, index)
-        crop = image.crop(box).convert("RGB")
-        red_pixels = 0
-        total = max(1, crop.width * crop.height)
-        for r, g, b in crop.getdata():
-            if r >= 210 and g <= 125 and b <= 125:
-                red_pixels += 1
-        return red_pixels / total > 0.006
-
-    def _date_status_box(self, image: Image.Image, index: int) -> tuple[int, int, int, int]:
-        card_width = int(image.width * 0.20)
-        center_x = int(image.width * DATE_CARD_RATIOS[index])
-        top = int(image.height * DATE_CARD_STATUS_BOX[1])
-        bottom = int(image.height * DATE_CARD_STATUS_BOX[3])
-        left = max(0, center_x - card_width // 2)
-        right = min(image.width, center_x + card_width // 2)
-        return (left, top, right, bottom)
-
-    def _find_blue_available_components(self, image: Image.Image) -> list[tuple[int, int, int, int]]:
-        rgb = image.convert("RGB")
-        width, height = rgb.size
-        pixels = rgb.load()
-        mask: set[tuple[int, int]] = set()
-        top_limit = int(height * 0.16)
-        bottom_limit = int(height * 0.92)
-        right_limit = int(width * 0.92)
-
-        step = 2
-        for y in range(top_limit, bottom_limit, step):
-            for x in range(0, right_limit, step):
-                r, g, b = pixels[x, y]
-                blue_selectable = b >= 175 and g >= 105 and r <= 165 and (b - r) >= 45 and (b - g) >= 10
-                header_or_icon = y < int(height * 0.28) and b >= 170 and g >= 80
-                if blue_selectable and not header_or_icon:
-                    mask.add((x // step, y // step))
-
-        components: list[tuple[int, int, int, int]] = []
-        while mask:
-            start = mask.pop()
-            stack = [start]
-            min_x = max_x = start[0]
-            min_y = max_y = start[1]
-            count = 0
-            while stack:
-                cx, cy = stack.pop()
-                count += 1
-                min_x = min(min_x, cx)
-                max_x = max(max_x, cx)
-                min_y = min(min_y, cy)
-                max_y = max(max_y, cy)
-                for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
-                    if (nx, ny) in mask:
-                        mask.remove((nx, ny))
-                        stack.append((nx, ny))
-
-            left, top, right, bottom = min_x * step, min_y * step, (max_x + 1) * step, (max_y + 1) * step
-            comp_width = right - left
-            comp_height = bottom - top
-            if count >= 35 and 22 <= comp_width <= 150 and 18 <= comp_height <= 120:
-                components.append((left, top, right, bottom))
-
-        return components
 
     def _summary_slot(self, venue: Venue, target_date: dt.date, config: MonitorConfig, reason: str) -> Slot:
         return Slot(

@@ -38,7 +38,7 @@ class PCVenueMonitor:
         self.wake_event.set()
 
     def run(self) -> None:
-        self.events.put(("log", "正在启动交我办 PC 版。监控期间请不要手动操作交我办窗口。"))
+        self.events.put(("log", "正在启动交我办 PC 版。"))
         try:
             self._driver = PCBookingDriver(self.events, self.stop_event)
             self._driver.start()

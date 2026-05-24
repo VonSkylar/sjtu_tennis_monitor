@@ -103,7 +103,7 @@ class PCApp(tk.Tk):
 
         self._append_log(
             "PC版会打开桌面交我办并监控所选网球场。"
-            "使用 Androws Android 自动化接口（ADB）运行，不移动真实鼠标。"
+            "使用 Androws Android 自动化接口（ADB）运行。"
             "PC版只报警，不自动下单。"
         )
 

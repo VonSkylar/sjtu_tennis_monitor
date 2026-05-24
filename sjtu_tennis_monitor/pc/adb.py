@@ -78,15 +78,18 @@ class ADBController:
                     offline.append(parts[0])
 
         if online:
+            active = [serial for serial in online if cls._device_has_active_app(adb_path, serial)]
+            if active:
+                online = active
             preferred_order = ("127.0.0.1:15118", "127.0.0.1:5555", "emulator-5554")
             serial = next((item for item in preferred_order if item in online), online[0])
             events.put(("log", f"ADB 已在线，使用设备：{serial}。"))
             return cls(adb_path, serial, events, stop_event)
 
         if offline:
-            events.put(("log", "ADB 设备处于 offline，当前轮将使用窗口控制。"))
+            events.put(("log", "ADB 设备处于 offline，等待 ADB 就绪..."))
         else:
-            events.put(("log", "ADB 未发现在线 Androws 设备，当前轮将使用窗口控制。"))
+            events.put(("log", "未发现在线 Androws 设备，等待 ADB 就绪..."))
         return None
 
     @staticmethod
@@ -97,6 +100,25 @@ class ADBController:
             if candidate.exists():
                 return candidate
         return None
+
+    @classmethod
+    def _device_has_active_app(cls, adb_path: Path, serial: str) -> bool:
+        try:
+            output = subprocess.check_output(
+                [str(adb_path), "-s", serial, "shell", "dumpsys", "window", "displays"],
+                text=True, encoding="utf-8", errors="ignore", timeout=5,
+                **_subprocess_kwargs(),
+            )
+        except Exception:
+            return False
+        active_patterns = (
+            r"mCurrentFocus=.*" + re.escape(ANDROID_PACKAGE),
+            r"mFocusedApp=.*" + re.escape(ANDROID_PACKAGE),
+            r"mPreferredTopFocusableRootTask=.*" + re.escape(ANDROID_PACKAGE),
+            r"mTopFullscreenOpaqueWindowState=.*" + re.escape(ANDROID_PACKAGE),
+            r"Task\{[^}]+A=\d+:" + re.escape(ANDROID_PACKAGE) + r"[^}]+visible=true",
+        )
+        return any(re.search(pattern, output) for pattern in active_patterns)
 
     def is_ready(self) -> bool:
         try:
@@ -245,14 +267,30 @@ class ADBController:
             block = output[start:end]
             if ANDROID_PACKAGE not in block:
                 continue
+            if not self._display_block_has_active_app(block):
+                continue
 
             display_id = int(match.group(1))
-            size_match = re.search(r"\bcur=(\d+)x(\d+)", block)
+            size_match = re.search(r"\bapp=(\d+)x(\d+)", block)
+            if size_match and max(int(size_match.group(1)), int(size_match.group(2))) <= 500:
+                size_match = None
+            if not size_match:
+                size_match = re.search(r"\bcur=(\d+)x(\d+)", block)
             if not size_match:
                 size_match = re.search(r"\binit=(\d+)x(\d+)", block)
             size = (int(size_match.group(1)), int(size_match.group(2))) if size_match else None
             return display_id, size
         return None
+
+    def _display_block_has_active_app(self, block: str) -> bool:
+        active_patterns = (
+            r"mCurrentFocus=.*" + re.escape(ANDROID_PACKAGE),
+            r"mFocusedApp=.*" + re.escape(ANDROID_PACKAGE),
+            r"mPreferredTopFocusableRootTask=.*" + re.escape(ANDROID_PACKAGE),
+            r"mTopFullscreenOpaqueWindowState=.*" + re.escape(ANDROID_PACKAGE),
+            r"Task\{[^}]+A=\d+:" + re.escape(ANDROID_PACKAGE) + r"[^}]+visible=true",
+        )
+        return any(re.search(pattern, block) for pattern in active_patterns)
 
     def _update_screen_size_from_nodes(self, nodes: list[UiNode]) -> None:
         if not nodes:
