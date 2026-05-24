@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+browser_profile/
+.vscode/
+.idea/
+*.log
+adb_screen.png
