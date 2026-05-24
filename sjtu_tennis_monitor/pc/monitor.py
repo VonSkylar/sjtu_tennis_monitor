@@ -7,15 +7,15 @@ import queue
 import threading
 import time
 
-from sjtu_tennis_booking.constants import DEFAULT_CHECK_INTERVAL_SECONDS, SETUP_SCAN_SECONDS
-from sjtu_tennis_booking.config import (
+from sjtu_tennis_monitor.constants import DEFAULT_CHECK_INTERVAL_SECONDS, SETUP_SCAN_SECONDS
+from sjtu_tennis_monitor.config import (
     config_label,
     next_pc_rate_limit_retry_time,
     save_pc_rate_limit_cooldown,
 )
-from sjtu_tennis_booking.exceptions import PCAppNotReady, PCRateLimited
-from sjtu_tennis_booking.models import MonitorConfig, Slot, Venue
-from sjtu_tennis_booking.pc.driver import PCBookingDriver
+from sjtu_tennis_monitor.exceptions import PCAppNotReady, PCRateLimited
+from sjtu_tennis_monitor.models import MonitorConfig, Slot, Venue
+from sjtu_tennis_monitor.pc.driver import PCBookingDriver
 
 
 class PCVenueMonitor:

@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sjtu-tennis-booking"
+name = "sjtu-tennis-monitor"
 version = "1.0.0"
 description = "交我办网球场空位警报器 — SJTU Tennis Court Booking Monitor"
 readme = "README.md"
@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-sjtu-tennis = "sjtu_tennis_booking.__main__:main"
+sjtu-tennis = "sjtu_tennis_monitor.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["sjtu_tennis_booking*"]
+include = ["sjtu_tennis_monitor*"]

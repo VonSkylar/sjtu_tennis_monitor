@@ -11,9 +11,9 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from sjtu_tennis_booking.constants import ANDROID_PACKAGE
-from sjtu_tennis_booking.exceptions import PCAppNotReady
-from sjtu_tennis_booking.models import UiNode
+from sjtu_tennis_monitor.constants import ANDROID_PACKAGE
+from sjtu_tennis_monitor.exceptions import PCAppNotReady
+from sjtu_tennis_monitor.models import UiNode
 
 # On Windows, prevent each subprocess (adb.exe) from flashing a console window.
 _NO_WINDOW: int = 0x08000000 if sys.platform == "win32" else 0

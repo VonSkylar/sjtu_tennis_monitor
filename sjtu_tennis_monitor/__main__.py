@@ -1,4 +1,4 @@
-"""Entry point for ``python -m sjtu_tennis_booking``."""
+"""Entry point for ``python -m sjtu_tennis_monitor``."""
 
 from __future__ import annotations
 
@@ -18,10 +18,10 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.pc:
-        from sjtu_tennis_booking.gui.pc_app import main as pc_main
+        from sjtu_tennis_monitor.gui.pc_app import main as pc_main
         pc_main()
     else:
-        from sjtu_tennis_booking.gui.browser_app import main as browser_main
+        from sjtu_tennis_monitor.gui.browser_app import main as browser_main
         browser_main()
 
 

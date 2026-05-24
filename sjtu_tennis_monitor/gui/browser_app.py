@@ -6,16 +6,16 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
-from sjtu_tennis_booking.alarm import Alarm
-from sjtu_tennis_booking.config import (
+from sjtu_tennis_monitor.alarm import Alarm
+from sjtu_tennis_monitor.config import (
     config_label,
     default_date_range_text,
     load_rate_limit_cooldown,
     parse_config,
 )
-from sjtu_tennis_booking.constants import DEFAULT_CHECK_INTERVAL_SECONDS
-from sjtu_tennis_booking.models import Slot, VENUES
-from sjtu_tennis_booking.browser.monitor import VenueMonitor
+from sjtu_tennis_monitor.constants import DEFAULT_CHECK_INTERVAL_SECONDS
+from sjtu_tennis_monitor.models import Slot, VENUES
+from sjtu_tennis_monitor.browser.monitor import VenueMonitor
 
 
 class App(tk.Tk):

@@ -13,16 +13,16 @@ from typing import Iterable
 
 from PIL import Image
 
-from sjtu_tennis_booking.constants import (
+from sjtu_tennis_monitor.constants import (
     ANDROID_PACKAGE,
     DATE_CARD_RATIOS,
     DATE_CARD_STATUS_BOX,
     DATE_CARD_Y_RATIO,
     PC_SHORTCUT_NAME,
 )
-from sjtu_tennis_booking.exceptions import PCAppNotReady, PCRateLimited
-from sjtu_tennis_booking.models import MonitorConfig, Slot, UiNode, Venue
-from sjtu_tennis_booking.pc.adb import ADBController
+from sjtu_tennis_monitor.exceptions import PCAppNotReady, PCRateLimited
+from sjtu_tennis_monitor.models import MonitorConfig, Slot, UiNode, Venue
+from sjtu_tennis_monitor.pc.adb import ADBController
 
 
 class PCBookingDriver:
