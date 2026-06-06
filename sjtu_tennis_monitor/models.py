@@ -39,6 +39,15 @@ class MonitorConfig:
 
 
 @dataclass(frozen=True)
+class RushConfig:
+    venue: Venue
+    target_date: dt.date
+    start_hour: int
+    end_hour: int
+    preferred_court: int
+
+
+@dataclass(frozen=True)
 class Slot:
     venue_key: str
     venue: str

@@ -13,7 +13,7 @@ from sjtu_tennis_monitor.constants import (
     MIN_CHECK_INTERVAL_SECONDS,
     OPEN_HOUR,
 )
-from sjtu_tennis_monitor.models import MonitorConfig, Venue, VENUES_BY_KEY
+from sjtu_tennis_monitor.models import MonitorConfig, RushConfig, Venue, VENUES_BY_KEY
 
 
 # ---------------------------------------------------------------------------
@@ -21,6 +21,9 @@ from sjtu_tennis_monitor.models import MonitorConfig, Venue, VENUES_BY_KEY
 # ---------------------------------------------------------------------------
 RATE_LIMIT_COOLDOWN_FILE = Path("rate_limit_until.txt")
 PC_RATE_LIMIT_COOLDOWN_FILE = Path("pc_rate_limit_until.txt")
+RUSH_TARGET_DAYS_AHEAD = 7
+RUSH_RELEASE_TIME = dt.time(hour=12, minute=0)
+RUSH_DEADLINE_TIME = dt.time(hour=12, minute=1)
 
 
 # ---------------------------------------------------------------------------
@@ -49,6 +52,24 @@ def parse_config(
         raise ValueError("结束时间必须晚于开始时间")
 
     return MonitorConfig(venues, target_dates, start_hour, end_hour, check_interval_seconds, auto_order_enabled)
+
+
+def parse_rush_config(
+    time_range_text: str,
+    venue_key: str,
+    court_text: str,
+    now: dt.datetime | None = None,
+) -> RushConfig:
+    venue = parse_venues((venue_key,))[0]
+    start_hour, end_hour = parse_rush_time_range(time_range_text)
+    court = parse_court_number(court_text)
+    return RushConfig(
+        venue=venue,
+        target_date=rush_target_date(now),
+        start_hour=start_hour,
+        end_hour=end_hour,
+        preferred_court=court,
+    )
 
 
 def parse_venues(venue_keys: tuple[str, ...]) -> tuple[Venue, ...]:
@@ -127,6 +148,33 @@ def parse_interval_seconds(text: str) -> int:
     return seconds
 
 
+def parse_rush_time_range(text: str) -> tuple[int, int]:
+    value = text.strip()
+    match = re.fullmatch(r"(\d{1,2}):00\s*[-~]\s*(\d{1,2}):00", value)
+    if not match:
+        raise ValueError("抢场时间段格式应为 HH:00-HH:00，例如 21:00-22:00")
+
+    start_hour = int(match.group(1))
+    end_hour = int(match.group(2))
+    if not (OPEN_HOUR <= start_hour < CLOSE_HOUR):
+        raise ValueError(f"抢场开始时间必须在 {OPEN_HOUR:02d}:00 到 {CLOSE_HOUR - 1:02d}:00 之间")
+    if end_hour != start_hour + 1:
+        raise ValueError("抢场器每次只能抢 1 小时时段")
+    if end_hour > CLOSE_HOUR:
+        raise ValueError(f"抢场结束时间不能晚于 {CLOSE_HOUR:02d}:00")
+    return start_hour, end_hour
+
+
+def parse_court_number(text: str) -> int:
+    value = text.strip().replace("场地", "")
+    if not value.isdigit():
+        raise ValueError("场地号必须是 1 到 8")
+    court = int(value)
+    if not (1 <= court <= 8):
+        raise ValueError("场地号必须是 1 到 8")
+    return court
+
+
 # ---------------------------------------------------------------------------
 # Display helpers
 # ---------------------------------------------------------------------------
@@ -135,6 +183,43 @@ def config_label(config: MonitorConfig) -> str:
     dates = ",".join(date.isoformat() for date in config.dates)
     auto_order = "，唯一符合条件空场自动下单" if config.auto_order_enabled else ""
     return f"{venues} {dates} {config.start_hour:02d}:00-{config.end_hour:02d}:00，每 {config.check_interval_seconds} 秒检查{auto_order}"
+
+
+def rush_config_label(config: RushConfig) -> str:
+    return (
+        f"{config.venue.name} {config.target_date.isoformat()} "
+        f"{config.start_hour:02d}:00-{config.end_hour:02d}:00 场地{config.preferred_court}"
+    )
+
+
+def rush_target_date(now: dt.datetime | None = None) -> dt.date:
+    current = now or dt.datetime.now()
+    return current.date() + dt.timedelta(days=RUSH_TARGET_DAYS_AHEAD)
+
+
+def rush_time_options() -> tuple[str, ...]:
+    return tuple(f"{hour:02d}:00-{hour + 1:02d}:00" for hour in range(OPEN_HOUR, CLOSE_HOUR))
+
+
+def court_attempt_order(preferred_court: int) -> tuple[int, ...]:
+    if not (1 <= preferred_court <= 8):
+        raise ValueError("场地号必须是 1 到 8")
+    return (preferred_court, *(court for court in range(1, 9) if court != preferred_court))
+
+
+def rush_release_datetime(now: dt.datetime | None = None) -> dt.datetime:
+    current = now or dt.datetime.now()
+    return dt.datetime.combine(current.date(), RUSH_RELEASE_TIME)
+
+
+def rush_deadline_datetime(now: dt.datetime | None = None) -> dt.datetime:
+    current = now or dt.datetime.now()
+    return dt.datetime.combine(current.date(), RUSH_DEADLINE_TIME)
+
+
+def is_rush_start_allowed(now: dt.datetime | None = None) -> bool:
+    current = now or dt.datetime.now()
+    return current < rush_deadline_datetime(current)
 
 
 def target_date_labels(target_date: dt.date) -> list[str]:
