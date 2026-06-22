@@ -22,8 +22,8 @@ from sjtu_tennis_monitor.models import MonitorConfig, RushConfig, Venue, VENUES_
 RATE_LIMIT_COOLDOWN_FILE = Path("rate_limit_until.txt")
 PC_RATE_LIMIT_COOLDOWN_FILE = Path("pc_rate_limit_until.txt")
 RUSH_TARGET_DAYS_AHEAD = 7
-RUSH_RELEASE_TIME = dt.time(hour=12, minute=0)
-RUSH_DEADLINE_TIME = dt.time(hour=12, minute=1)
+DEFAULT_RUSH_RELEASE_TIME = dt.time(hour=12)
+RUSH_ATTEMPT_WINDOW = dt.timedelta(minutes=1)
 
 
 # ---------------------------------------------------------------------------
@@ -59,16 +59,19 @@ def parse_rush_config(
     venue_key: str,
     court_text: str,
     now: dt.datetime | None = None,
+    release_time_text: str = "12:00:00",
 ) -> RushConfig:
     venue = parse_venues((venue_key,))[0]
     start_hour, end_hour = parse_rush_time_range(time_range_text)
     court = parse_court_number(court_text)
+    release_time = parse_rush_start_time(release_time_text)
     return RushConfig(
         venue=venue,
         target_date=rush_target_date(now),
         start_hour=start_hour,
         end_hour=end_hour,
         preferred_court=court,
+        release_time=release_time,
     )
 
 
@@ -165,6 +168,14 @@ def parse_rush_time_range(text: str) -> tuple[int, int]:
     return start_hour, end_hour
 
 
+def parse_rush_start_time(text: str) -> dt.time:
+    value = text.strip()
+    try:
+        return dt.datetime.strptime(value, "%H:%M:%S").time()
+    except ValueError as exc:
+        raise ValueError("开始抢场时间格式应为 HH:MM:SS，例如 12:00:00") from exc
+
+
 def parse_court_number(text: str) -> int:
     value = text.strip().replace("场地", "")
     if not value.isdigit():
@@ -188,7 +199,8 @@ def config_label(config: MonitorConfig) -> str:
 def rush_config_label(config: RushConfig) -> str:
     return (
         f"{config.venue.name} {config.target_date.isoformat()} "
-        f"{config.start_hour:02d}:00-{config.end_hour:02d}:00 场地{config.preferred_court}"
+        f"{config.start_hour:02d}:00-{config.end_hour:02d}:00 场地{config.preferred_court}，"
+        f"{config.release_time.strftime('%H:%M:%S')} 开始抢场"
     )
 
 
@@ -207,19 +219,27 @@ def court_attempt_order(preferred_court: int) -> tuple[int, ...]:
     return (preferred_court, *(court for court in range(1, 9) if court != preferred_court))
 
 
-def rush_release_datetime(now: dt.datetime | None = None) -> dt.datetime:
+def rush_release_datetime(
+    now: dt.datetime | None = None,
+    release_time: dt.time | None = None,
+) -> dt.datetime:
     current = now or dt.datetime.now()
-    return dt.datetime.combine(current.date(), RUSH_RELEASE_TIME)
+    return dt.datetime.combine(current.date(), release_time or DEFAULT_RUSH_RELEASE_TIME)
 
 
-def rush_deadline_datetime(now: dt.datetime | None = None) -> dt.datetime:
+def rush_deadline_datetime(
+    now: dt.datetime | None = None,
+    release_time: dt.time | None = None,
+) -> dt.datetime:
+    return rush_release_datetime(now, release_time) + RUSH_ATTEMPT_WINDOW
+
+
+def is_rush_start_allowed(
+    now: dt.datetime | None = None,
+    release_time: dt.time | None = None,
+) -> bool:
     current = now or dt.datetime.now()
-    return dt.datetime.combine(current.date(), RUSH_DEADLINE_TIME)
-
-
-def is_rush_start_allowed(now: dt.datetime | None = None) -> bool:
-    current = now or dt.datetime.now()
-    return current < rush_deadline_datetime(current)
+    return current < rush_deadline_datetime(current, release_time)
 
 
 def target_date_labels(target_date: dt.date) -> list[str]:

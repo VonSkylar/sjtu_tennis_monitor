@@ -14,6 +14,7 @@ from sjtu_tennis_monitor.config import (
     load_rate_limit_cooldown,
     parse_rush_config,
     rush_config_label,
+    rush_deadline_datetime,
     rush_release_datetime,
     rush_target_date,
     rush_time_options,
@@ -37,6 +38,7 @@ class RushApp(tk.Tk):
         self.time_var = tk.StringVar(value="21:00-22:00")
         self.venue_var = tk.StringVar(value=VENUES[0].name)
         self.court_var = tk.StringVar(value="1")
+        self.release_time_var = tk.StringVar(value="12:00:00")
         self.status_var = tk.StringVar(value="未开始")
 
         self._build_ui()
@@ -85,6 +87,10 @@ class RushApp(tk.Tk):
         )
         self.court_combo.grid(row=1, column=3, pady=6, sticky="ew")
 
+        ttk.Label(form, text="开始抢场").grid(row=2, column=0, padx=(0, 8), pady=6, sticky="w")
+        self.release_time_entry = ttk.Entry(form, textvariable=self.release_time_var, width=18)
+        self.release_time_entry.grid(row=2, column=1, padx=(0, 16), pady=6, sticky="ew")
+
         buttons = ttk.Frame(root)
         buttons.pack(fill=tk.X, pady=(12, 8))
 
@@ -99,15 +105,24 @@ class RushApp(tk.Tk):
         self.log = scrolledtext.ScrolledText(root, height=18, wrap=tk.WORD, state=tk.DISABLED)
         self.log.pack(fill=tk.BOTH, expand=True)
 
-        self._append_log("使用方式：12:01 前点击开始抢场。程序会打开网页等待登录，12:00 自动刷新并抢 7 天后的指定时间段。")
+        self._append_log("设置开始抢场时间后点击开始。程序会提前打开网页等待登录，并在指定时间刷新抢场。")
 
     def start_rush(self) -> None:
         self.date_var.set(rush_target_date().isoformat())
         now = dt.datetime.now()
-        if not is_rush_start_allowed(now):
+
+        try:
+            config = self.current_config()
+        except ValueError as exc:
+            messagebox.showerror("输入有误", str(exc))
+            return
+
+        if not is_rush_start_allowed(now, config.release_time):
+            deadline = rush_deadline_datetime(now, config.release_time)
+            message = f"抢场时间已过。本次抢场截止时间为 {deadline.strftime('%H:%M:%S')}。"
             self.status_var.set("抢场失败")
-            self._append_log("抢场时间已过。每天 12:01 前点击开始抢场才会工作。")
-            messagebox.showwarning("抢场时间已过", "抢场时间已过。每天 12:01 前点击开始抢场才会工作。")
+            self._append_log(message)
+            messagebox.showwarning("抢场时间已过", message)
             return
 
         cooldown_until = load_rate_limit_cooldown()
@@ -117,12 +132,6 @@ class RushApp(tk.Tk):
                 f"学校系统已经提示请求次数超过限制。\n\n建议不要继续刷新，请在 {cooldown_until.strftime('%Y-%m-%d %H:%M')} 后再试。",
             )
             self._append_log(f"今日请求已达上限，已阻止启动抢场。可在 {cooldown_until.strftime('%Y-%m-%d %H:%M')} 后再试。")
-            return
-
-        try:
-            config = self.current_config()
-        except ValueError as exc:
-            messagebox.showerror("输入有误", str(exc))
             return
 
         if self.booker_thread and self.booker_thread.is_alive():
@@ -136,7 +145,12 @@ class RushApp(tk.Tk):
         self._set_inputs_enabled(False)
         self.start_button.configure(state=tk.DISABLED)
         self.stop_button.configure(state=tk.NORMAL)
-        self.status_var.set("等待 12:00" if now < rush_release_datetime(now) else "抢场中")
+        release_at = rush_release_datetime(now, config.release_time)
+        self.status_var.set(
+            f"等待 {config.release_time.strftime('%H:%M:%S')}"
+            if now < release_at
+            else "抢场中"
+        )
         self._append_log(f"开始抢场：{rush_config_label(config)}")
 
     def current_config(self) -> RushConfig:
@@ -145,6 +159,7 @@ class RushApp(tk.Tk):
             self.time_var.get(),
             venue_key,
             self.court_var.get(),
+            release_time_text=self.release_time_var.get(),
         )
 
     def stop_rush(self) -> None:
@@ -203,6 +218,7 @@ class RushApp(tk.Tk):
         self.time_combo.configure(state=combo_state)
         self.venue_combo.configure(state=combo_state)
         self.court_combo.configure(state=combo_state)
+        self.release_time_entry.configure(state=tk.NORMAL if enabled else tk.DISABLED)
 
     def _append_log(self, message: str) -> None:
         timestamp = dt.datetime.now().strftime("%H:%M:%S")

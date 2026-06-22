@@ -45,6 +45,7 @@ class RushConfig:
     start_hour: int
     end_hour: int
     preferred_court: int
+    release_time: dt.time = dt.time(hour=12)
 
 
 @dataclass(frozen=True)
