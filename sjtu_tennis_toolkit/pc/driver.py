@@ -11,14 +11,14 @@ import time
 from pathlib import Path
 from typing import Iterable
 
-from sjtu_tennis_monitor.constants import (
+from sjtu_tennis_toolkit.constants import (
     DATE_CARD_RATIOS,
     DATE_CARD_Y_RATIO,
     PC_SHORTCUT_NAME,
 )
-from sjtu_tennis_monitor.exceptions import PCAppNotReady, PCRateLimited
-from sjtu_tennis_monitor.models import MonitorConfig, Slot, UiNode, Venue
-from sjtu_tennis_monitor.pc.adb import ADBController
+from sjtu_tennis_toolkit.exceptions import PCAppNotReady, PCRateLimited
+from sjtu_tennis_toolkit.models import MonitorConfig, Slot, UiNode, Venue
+from sjtu_tennis_toolkit.pc.adb import ADBController
 
 
 class PCBookingDriver:

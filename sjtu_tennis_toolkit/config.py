@@ -6,14 +6,14 @@ import datetime as dt
 import re
 from pathlib import Path
 
-from sjtu_tennis_monitor.constants import (
+from sjtu_tennis_toolkit.constants import (
     CLOSE_HOUR,
     DEFAULT_CHECK_INTERVAL_SECONDS,
     EIGHTH_DAY_RELEASE_HOUR,
     MIN_CHECK_INTERVAL_SECONDS,
     OPEN_HOUR,
 )
-from sjtu_tennis_monitor.models import MonitorConfig, RushConfig, Venue, VENUES_BY_KEY
+from sjtu_tennis_toolkit.models import MonitorConfig, RushConfig, Venue, VENUES_BY_KEY
 
 
 # ---------------------------------------------------------------------------

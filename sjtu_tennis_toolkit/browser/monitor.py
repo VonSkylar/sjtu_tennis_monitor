@@ -8,20 +8,20 @@ import re
 import threading
 import time
 
-from sjtu_tennis_monitor.constants import (
+from sjtu_tennis_toolkit.constants import (
     DEFAULT_CHECK_INTERVAL_SECONDS,
     DEBUG_PAGE_LIST_SECONDS,
     SETUP_SCAN_SECONDS,
     USER_DATA_DIR,
 )
-from sjtu_tennis_monitor.config import (
+from sjtu_tennis_toolkit.config import (
     config_label,
     next_rate_limit_retry_time,
     save_rate_limit_cooldown,
     target_date_labels,
 )
-from sjtu_tennis_monitor.exceptions import BookingPageNotReady, RequestRateLimited
-from sjtu_tennis_monitor.models import MonitorConfig, Slot, Venue, VENUES
+from sjtu_tennis_toolkit.exceptions import BookingPageNotReady, RequestRateLimited
+from sjtu_tennis_toolkit.models import MonitorConfig, Slot, Venue, VENUES
 
 
 class VenueMonitor:

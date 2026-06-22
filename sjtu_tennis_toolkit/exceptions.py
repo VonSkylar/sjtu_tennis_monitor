@@ -1,4 +1,4 @@
-"""Custom exception classes for the SJTU Tennis Court Booking Monitor."""
+"""Custom exception classes for the SJTU Tennis Toolkit."""
 
 from __future__ import annotations
 

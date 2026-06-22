@@ -1,4 +1,4 @@
-"""Shared constants for the SJTU Tennis Court Booking Monitor."""
+"""Shared constants for the SJTU Tennis Toolkit."""
 
 from __future__ import annotations
 

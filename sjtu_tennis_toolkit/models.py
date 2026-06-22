@@ -1,4 +1,4 @@
-"""Data models for the SJTU Tennis Court Booking Monitor."""
+"""Data models for the SJTU Tennis Toolkit."""
 
 from __future__ import annotations
 

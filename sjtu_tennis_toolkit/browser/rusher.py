@@ -1,4 +1,4 @@
-"""RushBooker - timed browser-based booking at the 12:00 release."""
+"""RushBooker - timed browser-based booking at the configured release time."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ import queue
 import threading
 import time
 
-from sjtu_tennis_monitor.browser.monitor import VenueMonitor
-from sjtu_tennis_monitor.config import (
+from sjtu_tennis_toolkit.browser.monitor import VenueMonitor
+from sjtu_tennis_toolkit.config import (
     court_attempt_order,
     is_rush_start_allowed,
     rush_config_label,
@@ -16,9 +16,9 @@ from sjtu_tennis_monitor.config import (
     rush_release_datetime,
     target_date_labels,
 )
-from sjtu_tennis_monitor.constants import USER_DATA_DIR
-from sjtu_tennis_monitor.exceptions import BookingPageNotReady, RequestRateLimited
-from sjtu_tennis_monitor.models import RushConfig, Slot
+from sjtu_tennis_toolkit.constants import USER_DATA_DIR
+from sjtu_tennis_toolkit.exceptions import BookingPageNotReady, RequestRateLimited
+from sjtu_tennis_toolkit.models import RushConfig, Slot
 
 
 DATE_TAB_READY_COUNT = 7

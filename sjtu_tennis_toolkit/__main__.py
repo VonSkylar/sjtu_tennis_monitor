@@ -1,4 +1,4 @@
-"""Entry point for ``python -m sjtu_tennis_monitor``."""
+"""Entry point for ``python -m sjtu_tennis_toolkit``."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import sys
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="交我办网球场空位警报器 — SJTU Tennis Court Booking Monitor",
+        description="交我办网球场监控与抢场工具集 — SJTU Tennis Toolkit",
     )
     parser.add_argument(
         "--pc",
@@ -26,13 +26,13 @@ def main() -> None:
         parser.error("--pc 和 --rush 不能同时使用")
 
     if args.pc:
-        from sjtu_tennis_monitor.gui.pc_app import main as pc_main
+        from sjtu_tennis_toolkit.gui.pc_app import main as pc_main
         pc_main()
     elif args.rush:
-        from sjtu_tennis_monitor.gui.rush_app import main as rush_main
+        from sjtu_tennis_toolkit.gui.rush_app import main as rush_main
         rush_main()
     else:
-        from sjtu_tennis_monitor.gui.browser_app import main as browser_main
+        from sjtu_tennis_toolkit.gui.browser_app import main as browser_main
         browser_main()
 
 

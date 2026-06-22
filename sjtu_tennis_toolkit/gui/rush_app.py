@@ -8,8 +8,8 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
-from sjtu_tennis_monitor.browser.rusher import RushBooker
-from sjtu_tennis_monitor.config import (
+from sjtu_tennis_toolkit.browser.rusher import RushBooker
+from sjtu_tennis_toolkit.config import (
     is_rush_start_allowed,
     load_rate_limit_cooldown,
     parse_rush_config,
@@ -19,7 +19,7 @@ from sjtu_tennis_monitor.config import (
     rush_target_date,
     rush_time_options,
 )
-from sjtu_tennis_monitor.models import RushConfig, Slot, VENUES
+from sjtu_tennis_toolkit.models import RushConfig, Slot, VENUES
 
 
 class RushApp(tk.Tk):

@@ -1,7 +1,7 @@
 import datetime as dt
 import unittest
 
-from sjtu_tennis_monitor.config import (
+from sjtu_tennis_toolkit.config import (
     court_attempt_order,
     is_rush_start_allowed,
     parse_rush_config,
@@ -11,7 +11,7 @@ from sjtu_tennis_monitor.config import (
     rush_target_date,
     rush_time_options,
 )
-from sjtu_tennis_monitor.browser.rusher import (
+from sjtu_tennis_toolkit.browser.rusher import (
     date_bar_action,
     date_bar_ready,
     point_inside_viewport,
