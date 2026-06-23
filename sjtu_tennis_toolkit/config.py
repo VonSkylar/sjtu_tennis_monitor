@@ -13,7 +13,32 @@ from sjtu_tennis_toolkit.constants import (
     MIN_CHECK_INTERVAL_SECONDS,
     OPEN_HOUR,
 )
-from sjtu_tennis_toolkit.models import MonitorConfig, RushConfig, Venue, VENUES_BY_KEY
+from sjtu_tennis_toolkit.models import (
+    MonitorConfig,
+    RushConfig,
+    RushTimeSlot,
+    Venue,
+    VENUES_BY_KEY,
+)
+
+
+# ---------------------------------------------------------------------------
+# Monitor court scopes
+# ---------------------------------------------------------------------------
+HUXIAOMING_COURT_SCOPE_ALL = "all"
+HUXIAOMING_COURT_SCOPE_OUTDOOR = "outdoor"
+HUXIAOMING_COURT_SCOPE_INDOOR = "indoor"
+HUXIAOMING_COURT_SCOPE_LABELS = {
+    HUXIAOMING_COURT_SCOPE_OUTDOOR: "只要室外场",
+    HUXIAOMING_COURT_SCOPE_INDOOR: "只要室内场",
+    HUXIAOMING_COURT_SCOPE_ALL: "全部都要",
+}
+HUXIAOMING_COURT_SCOPE_OPTIONS = tuple(HUXIAOMING_COURT_SCOPE_LABELS.values())
+RUSH_TIME_NOT_SELECTED = "不选择"
+MAX_RUSH_TIME_SLOTS = 7
+ALL_TENNIS_COURTS = tuple(range(1, 9))
+HUXIAOMING_OUTDOOR_COURTS = (1, 2, 3, 4, 5, 8)
+HUXIAOMING_INDOOR_COURTS = (6, 7)
 
 
 # ---------------------------------------------------------------------------
@@ -36,6 +61,7 @@ def parse_config(
     venue_keys: tuple[str, ...],
     interval_text: str = str(DEFAULT_CHECK_INTERVAL_SECONDS),
     auto_order_enabled: bool = False,
+    huxiaoming_court_scope: str = HUXIAOMING_COURT_SCOPE_ALL,
 ) -> MonitorConfig:
     venues = parse_venues(venue_keys)
     target_dates = parse_dates(date_text)
@@ -43,6 +69,7 @@ def parse_config(
     start_hour = parse_hour(start_text, "开始时间")
     end_hour = parse_hour(end_text, "结束时间")
     check_interval_seconds = parse_interval_seconds(interval_text)
+    court_scope = parse_huxiaoming_court_scope(huxiaoming_court_scope)
 
     if not (OPEN_HOUR <= start_hour < CLOSE_HOUR):
         raise ValueError(f"开始时间必须在 {OPEN_HOUR:02d}:00 到 {CLOSE_HOUR - 1:02d}:00 之间")
@@ -51,7 +78,43 @@ def parse_config(
     if end_hour <= start_hour:
         raise ValueError("结束时间必须晚于开始时间")
 
-    return MonitorConfig(venues, target_dates, start_hour, end_hour, check_interval_seconds, auto_order_enabled)
+    return MonitorConfig(
+        venues=venues,
+        dates=target_dates,
+        start_hour=start_hour,
+        end_hour=end_hour,
+        check_interval_seconds=check_interval_seconds,
+        auto_order_enabled=auto_order_enabled,
+        huxiaoming_court_scope=court_scope,
+    )
+
+
+def parse_huxiaoming_court_scope(value: str) -> str:
+    normalized = value.strip()
+    if normalized in HUXIAOMING_COURT_SCOPE_LABELS:
+        return normalized
+    for key, label in HUXIAOMING_COURT_SCOPE_LABELS.items():
+        if normalized == label:
+            return key
+    raise ValueError("胡晓明网球场范围必须选择：只要室外场、只要室内场或全部都要")
+
+
+def huxiaoming_court_scope_label(scope: str) -> str:
+    return HUXIAOMING_COURT_SCOPE_LABELS[parse_huxiaoming_court_scope(scope)]
+
+
+def court_matches_monitor_scope(venue_key: str, court_text: str, config: MonitorConfig) -> bool:
+    if venue_key != "huxiaoming" or config.huxiaoming_court_scope == HUXIAOMING_COURT_SCOPE_ALL:
+        return True
+
+    match = re.fullmatch(r"场地(\d+)", court_text.strip())
+    if not match:
+        return False
+
+    court_number = int(match.group(1))
+    if config.huxiaoming_court_scope == HUXIAOMING_COURT_SCOPE_INDOOR:
+        return court_number in {6, 7}
+    return court_number in {1, 2, 3, 4, 5, 8}
 
 
 def parse_rush_config(
@@ -60,18 +123,32 @@ def parse_rush_config(
     court_text: str,
     now: dt.datetime | None = None,
     release_time_text: str = "12:00:00",
+    second_time_range_text: str = "",
+    third_time_range_text: str = "",
+    huxiaoming_court_scope: str = HUXIAOMING_COURT_SCOPE_ALL,
+    time_range_texts: tuple[str, ...] | None = None,
 ) -> RushConfig:
     venue = parse_venues((venue_key,))[0]
-    start_hour, end_hour = parse_rush_time_range(time_range_text)
+    configured_times = time_range_texts or (
+        time_range_text,
+        second_time_range_text,
+        third_time_range_text,
+    )
+    time_slots = parse_rush_time_slots(*configured_times)
+    court_scope = parse_huxiaoming_court_scope(huxiaoming_court_scope)
     court = parse_court_number(court_text)
+    allowed_courts = rush_allowed_courts(venue.key, court_scope)
+    if court not in allowed_courts:
+        allowed_text = ",".join(str(value) for value in allowed_courts)
+        raise ValueError(f"场地号必须在当前场地范围内：{allowed_text}")
     release_time = parse_rush_start_time(release_time_text)
     return RushConfig(
         venue=venue,
         target_date=rush_target_date(now),
-        start_hour=start_hour,
-        end_hour=end_hour,
+        time_slots=time_slots,
         preferred_court=court,
         release_time=release_time,
+        huxiaoming_court_scope=court_scope,
     )
 
 
@@ -168,6 +245,39 @@ def parse_rush_time_range(text: str) -> tuple[int, int]:
     return start_hour, end_hour
 
 
+def parse_rush_time_slots(
+    *time_range_texts: str,
+) -> tuple[RushTimeSlot, ...]:
+    values = tuple(value.strip() for value in time_range_texts)
+    if not values or not values[0] or values[0] == RUSH_TIME_NOT_SELECTED:
+        raise ValueError("第一时间必须选择")
+    if len(values) > MAX_RUSH_TIME_SLOTS:
+        raise ValueError(f"最多只能设置 {MAX_RUSH_TIME_SLOTS} 个时间")
+
+    selected_values: list[str] = []
+    missing_seen = False
+    for value in values:
+        selected = bool(value and value != RUSH_TIME_NOT_SELECTED)
+        if not selected:
+            missing_seen = True
+            continue
+        if missing_seen:
+            raise ValueError("时间必须按顺序连续添加")
+        selected_values.append(value)
+
+    time_slots = tuple(
+        RushTimeSlot(*parse_rush_time_range(value))
+        for value in selected_values
+    )
+    normalized_slots = tuple(
+        (slot.start_hour, slot.end_hour)
+        for slot in time_slots
+    )
+    if len(normalized_slots) != len(set(normalized_slots)):
+        raise ValueError("第一、第二、第三时间不能重复")
+    return time_slots
+
+
 def parse_rush_start_time(text: str) -> dt.time:
     value = text.strip()
     try:
@@ -193,13 +303,27 @@ def config_label(config: MonitorConfig) -> str:
     venues = "、".join(venue.name for venue in config.venues)
     dates = ",".join(date.isoformat() for date in config.dates)
     auto_order = "，唯一符合条件空场自动下单" if config.auto_order_enabled else ""
-    return f"{venues} {dates} {config.start_hour:02d}:00-{config.end_hour:02d}:00，每 {config.check_interval_seconds} 秒检查{auto_order}"
+    huxiaoming_scope = ""
+    if any(venue.key == "huxiaoming" for venue in config.venues):
+        huxiaoming_scope = f"（胡晓明：{huxiaoming_court_scope_label(config.huxiaoming_court_scope)}）"
+    return (
+        f"{venues}{huxiaoming_scope} {dates} "
+        f"{config.start_hour:02d}:00-{config.end_hour:02d}:00，"
+        f"每 {config.check_interval_seconds} 秒检查{auto_order}"
+    )
 
 
 def rush_config_label(config: RushConfig) -> str:
+    time_ranges = "、".join(
+        f"{slot.start_hour:02d}:00-{slot.end_hour:02d}:00"
+        for slot in config.time_slots
+    )
+    scope = ""
+    if config.venue.key == "huxiaoming":
+        scope = f"（{huxiaoming_court_scope_label(config.huxiaoming_court_scope)}）"
     return (
-        f"{config.venue.name} {config.target_date.isoformat()} "
-        f"{config.start_hour:02d}:00-{config.end_hour:02d}:00 场地{config.preferred_court}，"
+        f"{config.venue.name}{scope} {config.target_date.isoformat()} "
+        f"{time_ranges} 场地{config.preferred_court}，"
         f"{config.release_time.strftime('%H:%M:%S')} 开始抢场"
     )
 
@@ -213,10 +337,45 @@ def rush_time_options() -> tuple[str, ...]:
     return tuple(f"{hour:02d}:00-{hour + 1:02d}:00" for hour in range(OPEN_HOUR, CLOSE_HOUR))
 
 
+def rush_allowed_courts(
+    venue_key: str,
+    huxiaoming_court_scope: str = HUXIAOMING_COURT_SCOPE_ALL,
+) -> tuple[int, ...]:
+    if venue_key != "huxiaoming":
+        return ALL_TENNIS_COURTS
+
+    scope = parse_huxiaoming_court_scope(huxiaoming_court_scope)
+    if scope == HUXIAOMING_COURT_SCOPE_OUTDOOR:
+        return HUXIAOMING_OUTDOOR_COURTS
+    if scope == HUXIAOMING_COURT_SCOPE_INDOOR:
+        return HUXIAOMING_INDOOR_COURTS
+    return ALL_TENNIS_COURTS
+
+
+def rush_court_attempt_order(
+    preferred_court: int,
+    allowed_courts: tuple[int, ...],
+) -> tuple[int, ...]:
+    normalized = tuple(sorted(set(allowed_courts)))
+    if not normalized or any(court not in ALL_TENNIS_COURTS for court in normalized):
+        raise ValueError("允许场地号必须是 1 到 8")
+    if preferred_court not in normalized:
+        raise ValueError("首选场地号不在允许的场地范围内")
+    return (preferred_court, *(court for court in normalized if court != preferred_court))
+
+
 def court_attempt_order(preferred_court: int) -> tuple[int, ...]:
-    if not (1 <= preferred_court <= 8):
-        raise ValueError("场地号必须是 1 到 8")
-    return (preferred_court, *(court for court in range(1, 9) if court != preferred_court))
+    return rush_court_attempt_order(preferred_court, ALL_TENNIS_COURTS)
+
+
+def rush_attempt_plan(config: RushConfig) -> tuple[tuple[RushTimeSlot, int], ...]:
+    allowed_courts = rush_allowed_courts(config.venue.key, config.huxiaoming_court_scope)
+    courts = rush_court_attempt_order(config.preferred_court, allowed_courts)
+    return tuple(
+        (time_slot, court)
+        for time_slot in config.time_slots
+        for court in courts
+    )
 
 
 def rush_release_datetime(

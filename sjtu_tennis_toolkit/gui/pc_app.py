@@ -8,6 +8,7 @@ from tkinter import messagebox, scrolledtext, ttk
 
 from sjtu_tennis_toolkit.alarm import Alarm
 from sjtu_tennis_toolkit.config import (
+    HUXIAOMING_COURT_SCOPE_OPTIONS,
     config_label,
     default_date_range_text,
     load_pc_rate_limit_cooldown,
@@ -37,15 +38,25 @@ class PCApp(tk.Tk):
         self.start_var = tk.StringVar(value="17:00")
         self.end_var = tk.StringVar(value="22:00")
         self.interval_var = tk.StringVar(value=str(DEFAULT_CHECK_INTERVAL_SECONDS))
+        self.huxiaoming_scope_var = tk.StringVar(value="全部都要")
         self.venue_vars = {
             venue.key: tk.BooleanVar(value=True)
             for venue in VENUES
         }
         self.status_var = tk.StringVar(value="未开始")
-        for var in (self.date_var, self.start_var, self.end_var, self.interval_var, *self.venue_vars.values()):
+        for var in (
+            self.date_var,
+            self.start_var,
+            self.end_var,
+            self.interval_var,
+            self.huxiaoming_scope_var,
+            *self.venue_vars.values(),
+        ):
             var.trace_add("write", self._schedule_config_change)
 
         self._build_ui()
+        self.venue_vars["huxiaoming"].trace_add("write", self._update_huxiaoming_scope_state)
+        self._update_huxiaoming_scope_state()
         self.after(200, self._drain_events)
 
     def _build_ui(self) -> None:
@@ -81,7 +92,16 @@ class PCApp(tk.Tk):
                 venue_options,
                 text=venue.name,
                 variable=self.venue_vars[venue.key],
-            ).pack(side=tk.LEFT, padx=(0, 18))
+            ).pack(side=tk.LEFT, padx=(0, 8 if venue.key == "huxiaoming" else 18))
+            if venue.key == "huxiaoming":
+                self.huxiaoming_scope_combo = ttk.Combobox(
+                    venue_options,
+                    textvariable=self.huxiaoming_scope_var,
+                    values=HUXIAOMING_COURT_SCOPE_OPTIONS,
+                    width=10,
+                    state="readonly",
+                )
+                self.huxiaoming_scope_combo.pack(side=tk.LEFT, padx=(0, 18))
 
 
 
@@ -104,6 +124,7 @@ class PCApp(tk.Tk):
         self._append_log(
             "PC版会打开桌面交我办并监控所选网球场。"
             "使用 Androws Android 自动化接口（ADB）运行。"
+            "胡晓明网球场可限定室外场（1-5、8）、室内场（6、7）或全部场地。"
             "PC版只报警，不自动下单。"
         )
 
@@ -144,7 +165,12 @@ class PCApp(tk.Tk):
             venue_keys,
             self.interval_var.get(),
             False,
+            self.huxiaoming_scope_var.get(),
         )
+
+    def _update_huxiaoming_scope_state(self, *_args) -> None:
+        state = "readonly" if self.venue_vars["huxiaoming"].get() else "disabled"
+        self.huxiaoming_scope_combo.configure(state=state)
 
     def _schedule_config_change(self, *_args) -> None:
         if self.config_change_after_id:

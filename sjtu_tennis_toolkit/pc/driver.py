@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from typing import Iterable
 
+from sjtu_tennis_toolkit.config import court_matches_monitor_scope
 from sjtu_tennis_toolkit.constants import (
     DATE_CARD_RATIOS,
     DATE_CARD_Y_RATIO,
@@ -232,7 +233,7 @@ class PCBookingDriver:
         for node in available_nodes:
             hour = self._nearest_node(node, time_nodes, axis="y", max_distance=70)
             court = self._nearest_node(node, court_nodes, axis="x", max_distance=90)
-            if hour and court:
+            if hour and court and court_matches_monitor_scope(venue.key, court.text, config):
                 key = (court.text, hour.text)
                 if key not in seen:
                     seen.add(key)
@@ -255,7 +256,11 @@ class PCBookingDriver:
             return []
 
         if self._has_any_available_words(text):
-            return [self._summary_slot(venue, target_date, config, "页面文字显示可预约")]
+            summary = self._summary_slot(venue, target_date, config, "页面文字显示可预约")
+            if court_matches_monitor_scope(venue.key, summary.court, config):
+                return [summary]
+            self.events.put(("log", f"PC版 {venue.name} 页面只显示可预约文字，无法确认是否属于所选室内/室外范围，本轮不报警。"))
+            return []
         return None
 
     def _target_date_marked_full(self, nodes: list[UiNode], target_date: dt.date) -> bool:

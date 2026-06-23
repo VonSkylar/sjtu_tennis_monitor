@@ -16,12 +16,13 @@ from sjtu_tennis_toolkit.constants import (
 )
 from sjtu_tennis_toolkit.config import (
     config_label,
+    court_matches_monitor_scope,
     next_rate_limit_retry_time,
     save_rate_limit_cooldown,
     target_date_labels,
 )
 from sjtu_tennis_toolkit.exceptions import BookingPageNotReady, RequestRateLimited
-from sjtu_tennis_toolkit.models import MonitorConfig, Slot, Venue, VENUES
+from sjtu_tennis_toolkit.models import MonitorConfig, Slot, Venue, VENUES, VENUES_BY_KEY
 
 
 class VenueMonitor:
@@ -129,19 +130,19 @@ class VenueMonitor:
     def _find_or_open_venue_page(self, context, venue: Venue):
         cached = self._pages_by_venue.get(venue.key)
         if cached and not cached.is_closed():
-            matched_venue = self._venue_from_url(cached.url)
-            if matched_venue and matched_venue.key != venue.key:
-                self._pages_by_venue.pop(venue.key, None)
-            else:
-                if self._is_blank_page(cached):
-                    cached.goto(venue.url, wait_until="domcontentloaded")
-                self.events.put(("log", f"正在监控 {venue.name} 标签页：{self._page_label(cached)}"))
-                return cached
+            if self._should_navigate_to_venue(cached.url, venue):
+                self.events.put(("log", f"登录后当前页面不是 {venue.name} 预约页，正在自动跳转。"))
+                cached.goto(venue.url, wait_until="domcontentloaded")
+            self.events.put(("log", f"正在监控 {venue.name} 标签页：{self._page_label(cached)}"))
+            return cached
 
         page = self._find_existing_venue_page(context, venue)
         if page:
             self._pages_by_venue[venue.key] = page
             return page
+
+        if self._find_login_page(context):
+            raise BookingPageNotReady("正在等待已打开的 jAccount 标签页完成登录。两个场馆只需登录一次，登录成功后程序会自动打开其它场馆。")
 
         page = self._find_blank_page(context) or context.new_page()
         self._pages_by_venue[venue.key] = page
@@ -153,11 +154,38 @@ class VenueMonitor:
         url = (page.url or "").lower()
         return url in {"", "about:blank"} or url.startswith("chrome://newtab")
 
+    def _is_login_url(self, url: str) -> bool:
+        return "jaccount.sjtu.edu.cn" in (url or "").lower()
+
+    def _should_navigate_to_venue(self, url: str, venue: Venue) -> bool:
+        if self._is_login_url(url):
+            return False
+        return not self._looks_like_venue_url(url, venue)
+
     def _find_blank_page(self, context):
         for page in context.pages:
             if not page.is_closed() and self._is_blank_page(page):
                 return page
         return None
+
+    def _find_login_page(self, context):
+        for page in context.pages:
+            if not page.is_closed() and self._is_login_url(page.url):
+                return page
+        return None
+
+    def _redirect_misaligned_venue_pages(self) -> None:
+        for venue_key, page in list(self._pages_by_venue.items()):
+            if page.is_closed():
+                continue
+            venue = VENUES_BY_KEY.get(venue_key)
+            if not venue or self._looks_like_venue_url(page.url, venue):
+                continue
+            try:
+                self.events.put(("log", f"登录已完成，正在立即打开 {venue.name} 预约页。"))
+                page.goto(venue.url, wait_until="domcontentloaded")
+            except Exception as exc:
+                self.events.put(("log", f"{venue.name} 登录后自动跳转未完成：{exc}"))
 
     def _find_existing_venue_page(self, context, venue: Venue):
         candidates = list(context.pages)
@@ -479,8 +507,11 @@ class VenueMonitor:
     def _ensure_booking_page(self, page, venue: Venue) -> None:
         text = page.locator("body").inner_text(timeout=3000)
         self._handle_login_page(page, text)
-        if not (self._looks_like_booking_url(page.url) or self._looks_like_booking_text(text) or self._has_booking_grid(page)):
-            raise BookingPageNotReady("标签页不像网球场预约页。请确认能看到日期、时间和场地表格。")
+        has_target_url = self._looks_like_venue_url(page.url, venue)
+        has_target_grid = venue.name in text and self._has_booking_grid(page)
+        if not (has_target_url or has_target_grid):
+            raise BookingPageNotReady(f"当前页面不是 {venue.name} 预约页，程序将自动重新跳转。")
+        self._redirect_misaligned_venue_pages()
         if "每日请求超过限制" in text or "请求超过限制" in text:
             raise RequestRateLimited("学校系统提示\u201c每日请求超过限制，无法获取\u201d。")
 
@@ -669,4 +700,5 @@ class VenueMonitor:
                 label=item["label"],
             )
             for item in slot_items
+            if court_matches_monitor_scope(venue.key, item["court"], config)
         ]

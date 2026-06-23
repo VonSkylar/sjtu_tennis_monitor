@@ -8,6 +8,7 @@ from tkinter import messagebox, scrolledtext, ttk
 
 from sjtu_tennis_toolkit.alarm import Alarm
 from sjtu_tennis_toolkit.config import (
+    HUXIAOMING_COURT_SCOPE_OPTIONS,
     config_label,
     default_date_range_text,
     load_rate_limit_cooldown,
@@ -37,16 +38,27 @@ class App(tk.Tk):
         self.start_var = tk.StringVar(value="17:00")
         self.end_var = tk.StringVar(value="22:00")
         self.interval_var = tk.StringVar(value=str(DEFAULT_CHECK_INTERVAL_SECONDS))
+        self.huxiaoming_scope_var = tk.StringVar(value="全部都要")
         self.auto_order_var = tk.BooleanVar(value=True)
         self.venue_vars = {
             venue.key: tk.BooleanVar(value=True)
             for venue in VENUES
         }
         self.status_var = tk.StringVar(value="未开始")
-        for var in (self.date_var, self.start_var, self.end_var, self.interval_var, self.auto_order_var, *self.venue_vars.values()):
+        for var in (
+            self.date_var,
+            self.start_var,
+            self.end_var,
+            self.interval_var,
+            self.auto_order_var,
+            self.huxiaoming_scope_var,
+            *self.venue_vars.values(),
+        ):
             var.trace_add("write", self._schedule_config_change)
 
         self._build_ui()
+        self.venue_vars["huxiaoming"].trace_add("write", self._update_huxiaoming_scope_state)
+        self._update_huxiaoming_scope_state()
         self.after(200, self._drain_events)
 
     def _build_ui(self) -> None:
@@ -82,7 +94,16 @@ class App(tk.Tk):
                 venue_options,
                 text=venue.name,
                 variable=self.venue_vars[venue.key],
-            ).pack(side=tk.LEFT, padx=(0, 18))
+            ).pack(side=tk.LEFT, padx=(0, 8 if venue.key == "huxiaoming" else 18))
+            if venue.key == "huxiaoming":
+                self.huxiaoming_scope_combo = ttk.Combobox(
+                    venue_options,
+                    textvariable=self.huxiaoming_scope_var,
+                    values=HUXIAOMING_COURT_SCOPE_OPTIONS,
+                    width=10,
+                    state="readonly",
+                )
+                self.huxiaoming_scope_combo.pack(side=tk.LEFT, padx=(0, 18))
 
         ttk.Label(form, text="下单").grid(row=3, column=0, padx=(0, 8), pady=6, sticky="w")
         ttk.Checkbutton(
@@ -107,7 +128,7 @@ class App(tk.Tk):
         self.log = scrolledtext.ScrolledText(root, height=18, wrap=tk.WORD, state=tk.DISABLED)
         self.log.pack(fill=tk.BOTH, expand=True)
 
-        self._append_log("使用方式：选择要监测的网球场，日期可填单日、多日或范围，例如 2026-05-11,2026-05-12 或 2026-05-11~2026-05-18。刷新间隔默认 20 秒，最小 10 秒。唯一符合空场自动下单默认开启。")
+        self._append_log("使用方式：选择要监测的网球场；胡晓明网球场可限定室外场（1-5、8）、室内场（6、7）或全部场地。日期可填单日、多日或范围。刷新间隔默认 20 秒，最小 10 秒。唯一符合空场自动下单默认开启。")
 
     def start_monitoring(self) -> None:
         cooldown_until = load_rate_limit_cooldown()
@@ -146,7 +167,12 @@ class App(tk.Tk):
             venue_keys,
             self.interval_var.get(),
             self.auto_order_var.get(),
+            self.huxiaoming_scope_var.get(),
         )
+
+    def _update_huxiaoming_scope_state(self, *_args) -> None:
+        state = "readonly" if self.venue_vars["huxiaoming"].get() else "disabled"
+        self.huxiaoming_scope_combo.configure(state=state)
 
     def _schedule_config_change(self, *_args) -> None:
         if self.config_change_after_id:

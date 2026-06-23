@@ -36,16 +36,23 @@ class MonitorConfig:
     end_hour: int
     check_interval_seconds: int
     auto_order_enabled: bool
+    huxiaoming_court_scope: str = "all"
+
+
+@dataclass(frozen=True)
+class RushTimeSlot:
+    start_hour: int
+    end_hour: int
 
 
 @dataclass(frozen=True)
 class RushConfig:
     venue: Venue
     target_date: dt.date
-    start_hour: int
-    end_hour: int
+    time_slots: tuple[RushTimeSlot, ...]
     preferred_court: int
     release_time: dt.time = dt.time(hour=12)
+    huxiaoming_court_scope: str = "all"
 
 
 @dataclass(frozen=True)

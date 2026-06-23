@@ -9,16 +9,17 @@ import time
 
 from sjtu_tennis_toolkit.browser.monitor import VenueMonitor
 from sjtu_tennis_toolkit.config import (
-    court_attempt_order,
     is_rush_start_allowed,
+    rush_allowed_courts,
     rush_config_label,
+    rush_court_attempt_order,
     rush_deadline_datetime,
     rush_release_datetime,
     target_date_labels,
 )
 from sjtu_tennis_toolkit.constants import USER_DATA_DIR
 from sjtu_tennis_toolkit.exceptions import BookingPageNotReady, RequestRateLimited
-from sjtu_tennis_toolkit.models import RushConfig, Slot
+from sjtu_tennis_toolkit.models import RushConfig, RushTimeSlot, Slot
 
 
 DATE_TAB_READY_COUNT = 7
@@ -230,11 +231,7 @@ class RushBooker(VenueMonitor):
 
                 self._raise_if_rate_limited(page)
 
-                if not self._wait_for_target_grid_ready(page, config, deadline):
-                    return None
-
-                ordered_slot = self._try_order_current_grid(page, config)
-                return ordered_slot
+                return self._try_configured_time_slots(page, config, deadline)
             except RequestRateLimited:
                 raise
             except Exception as exc:
@@ -245,6 +242,45 @@ class RushBooker(VenueMonitor):
                 self._log_attempt_wait(f"本轮抢场未完成：{exc}")
 
             self._wait_interruptibly(0.2)
+
+        return None
+
+    def _try_configured_time_slots(
+        self,
+        page,
+        config: RushConfig,
+        deadline: dt.datetime,
+    ) -> Slot | None:
+        priority_labels = (
+            "第一时间",
+            "第二时间",
+            "第三时间",
+            "第四时间",
+            "第五时间",
+            "第六时间",
+            "第七时间",
+        )
+        for index, time_slot in enumerate(config.time_slots):
+            priority_label = priority_labels[index]
+            time_label = f"{time_slot.start_hour:02d}:00-{time_slot.end_hour:02d}:00"
+            self.events.put(("log", f"开始{priority_label} {time_label}。"))
+
+            if not self._wait_for_target_grid_ready(page, time_slot, deadline):
+                return None
+
+            ordered_slot = self._try_order_current_grid(
+                page,
+                config,
+                time_slot,
+                deadline,
+            )
+            if ordered_slot:
+                return ordered_slot
+            if self.stop_event.is_set() or dt.datetime.now() >= deadline:
+                return None
+            if index + 1 < len(config.time_slots):
+                next_label = priority_labels[index + 1]
+                self.events.put(("log", f"{priority_label}全部失败，切换{next_label}。"))
 
         return None
 
@@ -315,16 +351,21 @@ class RushBooker(VenueMonitor):
             "date_count": int(result.get("dateCount") or 0),
         }
 
-    def _wait_for_target_grid_ready(self, page, config: RushConfig, deadline: dt.datetime) -> bool:
+    def _wait_for_target_grid_ready(
+        self,
+        page,
+        time_slot: RushTimeSlot,
+        deadline: dt.datetime,
+    ) -> bool:
         while not self.stop_event.is_set() and dt.datetime.now() < deadline:
-            state = self._target_grid_state(page, config)
+            state = self._target_grid_state(page, time_slot)
             if state["ready"]:
                 return True
             self._log_attempt_wait(f"等待场地图加载：{state['reason']}")
             self._wait_interruptibly(0.2)
         return False
 
-    def _target_grid_state(self, page, config: RushConfig) -> dict[str, object]:
+    def _target_grid_state(self, page, time_slot: RushTimeSlot) -> dict[str, object]:
         return page.evaluate(
             """
             ({ targetHour }) => {
@@ -393,7 +434,7 @@ class RushBooker(VenueMonitor):
               };
             }
             """,
-            {"targetHour": f"{config.start_hour:02d}:00"},
+            {"targetHour": f"{time_slot.start_hour:02d}:00"},
         )
 
     def _normalize_text(self, text: str) -> str:
@@ -407,12 +448,20 @@ class RushBooker(VenueMonitor):
             or "浏览器页面已关闭" in message
         )
 
-    def _try_order_current_grid(self, page, config: RushConfig) -> Slot | None:
-        for court in court_attempt_order(config.preferred_court):
-            if (
-                self.stop_event.is_set()
-                or dt.datetime.now() >= rush_deadline_datetime(release_time=config.release_time)
-            ):
+    def _try_order_current_grid(
+        self,
+        page,
+        config: RushConfig,
+        time_slot: RushTimeSlot,
+        deadline: dt.datetime,
+    ) -> Slot | None:
+        allowed_courts = rush_allowed_courts(
+            config.venue.key,
+            config.huxiaoming_court_scope,
+        )
+        court_order = rush_court_attempt_order(config.preferred_court, allowed_courts)
+        for court in court_order:
+            if self.stop_event.is_set() or dt.datetime.now() >= deadline:
                 return None
 
             slot = Slot(
@@ -420,8 +469,8 @@ class RushBooker(VenueMonitor):
                 venue=config.venue.name,
                 date=config.target_date,
                 court=f"场地{court}",
-                hour=f"{config.start_hour:02d}:00",
-                label=f"场地{court}-{config.start_hour:02d}:00",
+                hour=f"{time_slot.start_hour:02d}:00",
+                label=f"场地{court}-{time_slot.start_hour:02d}:00",
             )
 
             try:
@@ -462,7 +511,10 @@ class RushBooker(VenueMonitor):
                 self._click_visible_text_button(page, "提交订单", timeout=2000)
                 result_kind, result_text = self._wait_for_order_result(page)
                 if result_kind == "success":
-                    self.events.put(("log", f"已确认抢场成功：{slot.venue} {slot.date.isoformat()} {slot.hour}-{config.end_hour:02d}:00 {slot.court}"))
+                    self.events.put(
+                        ("log", f"已确认抢场成功：{slot.venue} {slot.date.isoformat()} "
+                        f"{slot.hour}-{time_slot.end_hour:02d}:00 {slot.court}")
+                    )
                     return slot
                 if result_kind == "failure":
                     self.events.put(("log", f"{slot.court} 提交失败：{result_text}"))
