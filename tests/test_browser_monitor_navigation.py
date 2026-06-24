@@ -1,18 +1,38 @@
 import queue
 import unittest
+from types import SimpleNamespace
 
+from sjtu_tennis_toolkit.browser.rusher import RushBooker
 from sjtu_tennis_toolkit.browser.monitor import VenueMonitor
 from sjtu_tennis_toolkit.exceptions import BookingPageNotReady
 from sjtu_tennis_toolkit.models import VENUES_BY_KEY
 
 
+class FakeLocator:
+    def __init__(self, text: str = "", count: int = 0) -> None:
+        self.text = text
+        self._count = count
+
+    def inner_text(self, timeout: int) -> str:
+        return self.text
+
+    def count(self) -> int:
+        return self._count
+
+
 class FakePage:
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, body_text: str = "") -> None:
         self.url = url
+        self.body_text = body_text
         self.goto_calls = []
 
     def is_closed(self) -> bool:
         return False
+
+    def locator(self, selector: str) -> FakeLocator:
+        if selector == "body":
+            return FakeLocator(self.body_text)
+        return FakeLocator()
 
     def goto(self, url: str, wait_until: str) -> None:
         self.goto_calls.append((url, wait_until))
@@ -94,6 +114,30 @@ class BrowserMonitorNavigationTest(unittest.TestCase):
 
         self.assertEqual(east_home.goto_calls, [(east.url, "domcontentloaded")])
         self.assertEqual(huxiaoming_page.goto_calls, [])
+
+    def test_monitor_booking_check_redirects_home_page_to_target_venue(self) -> None:
+        page = FakePage(
+            "https://sports.sjtu.edu.cn/pc/#/",
+            body_text="Shanghai Jiao Tong University Venue Reservation System",
+        )
+
+        with self.assertRaises(BookingPageNotReady):
+            self.monitor._ensure_booking_page(page, self.venue)
+
+        self.assertEqual(page.goto_calls, [(self.venue.url, "domcontentloaded")])
+
+    def test_rush_booker_redirects_home_page_to_target_venue(self) -> None:
+        page = FakePage(
+            "https://sports.sjtu.edu.cn/pc/#/",
+            body_text="Shanghai Jiao Tong University Venue Reservation System",
+        )
+        config = SimpleNamespace(venue=self.venue)
+        booker = RushBooker(lambda: config, queue.Queue())
+
+        with self.assertRaises(BookingPageNotReady):
+            booker._ensure_rush_venue_page(page, config)
+
+        self.assertEqual(page.goto_calls, [(self.venue.url, "domcontentloaded")])
 
 
 if __name__ == "__main__":

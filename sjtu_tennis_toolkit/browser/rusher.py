@@ -166,11 +166,6 @@ class RushBooker(VenueMonitor):
 
     def _ensure_rush_venue_page(self, page, config: RushConfig) -> None:
         self._ensure_booking_page(page, config.venue)
-        if self._looks_like_venue_url(page.url, config.venue):
-            return
-        self.events.put(("log", f"当前页面不是 {config.venue.name} 详情页，正在跳转到具体预约页。"))
-        page.goto(config.venue.url, wait_until="domcontentloaded")
-        raise BookingPageNotReady(f"已跳转到 {config.venue.name} 预约页，等待页面加载完成。")
 
     def _wait_for_release_time(self, config: RushConfig) -> None:
         release_at = rush_release_datetime(release_time=config.release_time)

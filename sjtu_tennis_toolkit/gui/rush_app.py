@@ -102,7 +102,13 @@ class RushApp(tk.Tk):
         )
         self.huxiaoming_scope_combo.grid(row=1, column=3, pady=6, sticky="ew")
 
-        ttk.Label(form, text="场地号").grid(row=2, column=0, padx=(0, 8), pady=6, sticky="w")
+        ttk.Label(form, text="场地号").grid(
+            row=2,
+            column=0,
+            padx=(0, 8),
+            pady=9,
+            sticky="nw",
+        )
         self.court_combo = ttk.Combobox(
             form,
             textvariable=self.court_var,
@@ -110,7 +116,13 @@ class RushApp(tk.Tk):
             state="readonly",
             width=8,
         )
-        self.court_combo.grid(row=2, column=1, padx=(0, 16), pady=6, sticky="ew")
+        self.court_combo.grid(
+            row=2,
+            column=1,
+            padx=(0, 16),
+            pady=6,
+            sticky="new",
+        )
 
         time_panel = ttk.Frame(form)
         time_panel.grid(row=2, column=2, columnspan=2, pady=6, sticky="nsew")

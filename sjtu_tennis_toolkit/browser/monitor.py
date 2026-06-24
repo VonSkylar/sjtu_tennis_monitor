@@ -510,7 +510,9 @@ class VenueMonitor:
         has_target_url = self._looks_like_venue_url(page.url, venue)
         has_target_grid = venue.name in text and self._has_booking_grid(page)
         if not (has_target_url or has_target_grid):
-            raise BookingPageNotReady(f"当前页面不是 {venue.name} 预约页，程序将自动重新跳转。")
+            self.events.put(("log", f"当前页面不是 {venue.name} 预约页，正在立即打开具体预约页。"))
+            page.goto(venue.url, wait_until="domcontentloaded")
+            raise BookingPageNotReady(f"已打开 {venue.name} 预约页，等待页面加载完成。")
         self._redirect_misaligned_venue_pages()
         if "每日请求超过限制" in text or "请求超过限制" in text:
             raise RequestRateLimited("学校系统提示\u201c每日请求超过限制，无法获取\u201d。")
